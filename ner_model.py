@@ -116,7 +116,6 @@ class NERModel(Model):
 
     def fit(self, sess, saver, train_examples_raw, dev_set_raw):
         best_score = 0.
-
         train_examples = self.preprocess_sequence_data(train_examples_raw)
         dev_set = self.preprocess_sequence_data(dev_set_raw)
 
