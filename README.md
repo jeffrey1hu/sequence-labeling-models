@@ -21,8 +21,8 @@ python rnn.py train --cell [rnn|gru|lstm]
 ```
 
 ### TODO
-* implement lstm cell
-* add tensorboard
-* 
+- [x] implement lstm cell
+- [ ] add tensorboard
+- [ ] implement BiLSTM+CRF architecture
 
 ### Further Observations
