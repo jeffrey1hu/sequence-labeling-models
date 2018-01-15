@@ -74,15 +74,18 @@ class LSTMCell(tf.nn.rnn_cell.RNNCell):
 
             W_f = tf.get_variable("W_f", shape=[self.input_size, self._state_size], dtype=tf.float32, initializer=tf.contrib.layers.xavier_initializer())
             U_f = tf.get_variable("U_f", shape=[self._state_size, self._state_size], dtype=tf.float32, initializer=tf.contrib.layers.xavier_initializer())
-            b_f = tf.get_variable("b_f", shape=[self._state_size], dtype=tf.float32)
+            # initialize b_f with constant 1.0
+            b_f = tf.get_variable("b_f", shape=[self._state_size], dtype=tf.float32, initializer=tf.constant_initializer(1.0))
 
             W_i = tf.get_variable("W_i", shape=[self.input_size, self._state_size], dtype=tf.float32, initializer=tf.contrib.layers.xavier_initializer())
             U_i = tf.get_variable("U_i", shape=[self._state_size, self._state_size], dtype=tf.float32, initializer=tf.contrib.layers.xavier_initializer())
-            b_i = tf.get_variable("b_i", shape=[self._state_size], dtype=tf.float32)
+            # initialize b_i with constant 1.0
+            b_i = tf.get_variable("b_i", shape=[self._state_size], dtype=tf.float32, initializer=tf.constant_initializer(1.0))
 
             W_o = tf.get_variable("W_o", shape=[self.input_size, self._state_size], dtype=tf.float32, initializer=tf.contrib.layers.xavier_initializer())
             U_o = tf.get_variable("U_o", shape=[self._state_size, self._state_size], dtype=tf.float32, initializer=tf.contrib.layers.xavier_initializer())
-            b_o = tf.get_variable("b_o", shape=[self._state_size], dtype=tf.float32)
+            # initialize b_o with constant 1.0
+            b_o = tf.get_variable("b_o", shape=[self._state_size], dtype=tf.float32, initializer=tf.constant_initializer(1.0))
 
             W_c = tf.get_variable("W_c", shape=[self.input_size, self._state_size], dtype=tf.float32, initializer=tf.contrib.layers.xavier_initializer())
             U_c = tf.get_variable("U_c", shape=[self._state_size, self._state_size], dtype=tf.float32, initializer=tf.contrib.layers.xavier_initializer())

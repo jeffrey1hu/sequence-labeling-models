@@ -47,6 +47,7 @@ class Config:
     n_epochs = 10
     max_grad_norm = 10.
     lr = 0.001
+    use_crf = True
 
     def __init__(self, args):
         self.cell = args.cell
@@ -325,9 +326,16 @@ class RNNModel(NERModel):
             loss: A 0-d tensor (scalar)
         """
         ### YOUR CODE HERE (~2-4 lines)
-        loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=tf.boolean_mask(self.labels_placeholder, self.mask_placeholder),
-                                                             logits=tf.boolean_mask(preds, self.mask_placeholder))
-        loss = tf.reduce_mean(loss)
+        if self.config.use_crf:
+            seq_length = tf.reduce_sum(tf.cast(self.mask_placeholder, tf.int32), axis=1)
+            log_likelihood, trans_params = tf.contrib.crf.crf_log_likelihood(
+                    preds, self.labels_placeholder, seq_length)
+            self.trans_params = trans_params
+            loss = tf.reduce_mean(-log_likelihood)
+        else:
+            loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=tf.boolean_mask(self.labels_placeholder, self.mask_placeholder),
+                                                                 logits=tf.boolean_mask(preds, self.mask_placeholder))
+            loss = tf.reduce_mean(loss)
 
         ### END YOUR CODE
         return loss
@@ -388,8 +396,21 @@ class RNNModel(NERModel):
 
     def predict_on_batch(self, sess, inputs_batch, mask_batch):
         feed = self.create_feed_dict(inputs_batch=inputs_batch, mask_batch=mask_batch)
-        predictions = sess.run(tf.argmax(self.pred, axis=2), feed_dict=feed)
-        return predictions
+        if self.config.use_crf:
+            seq_lengths = mask_batch.sum(axis=1)
+            # get tag scores and transition params of CRF
+            viterbi_sequences = []
+            logits, trans_params = sess.run([self.pred, self.trans_params], feed_dict=feed)
+            # iterate over the sentences because no batching in vitervi_decode
+            for logit, seq_len in zip(logits, seq_lengths):
+                logit = logit[:seq_len]
+                viterbi_seq, viterbi_score = tf.contrib.crf.viterbi_decode(logit, trans_params)
+                viterbi_sequences += [viterbi_seq]
+            return viterbi_sequences
+
+        else:
+            predictions = sess.run(tf.argmax(self.pred, axis=2), feed_dict=feed)
+            return predictions
 
     def train_on_batch(self, sess, inputs_batch, labels_batch, mask_batch):
         feed = self.create_feed_dict(inputs_batch, labels_batch=labels_batch, mask_batch=mask_batch,
@@ -463,6 +484,7 @@ def do_train(args):
     helper, train, dev, train_raw, dev_raw = load_and_preprocess_data(args)
     embeddings = load_embeddings(args, helper)
     config.embed_size = embeddings.shape[1]
+    # config.use_crf = True
     helper.save(config.output_path)
 
     handler = logging.FileHandler(config.log_output)
