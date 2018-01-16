@@ -11,7 +11,6 @@ import argparse
 import logging
 import sys
 import time
-from datetime import datetime
 
 import tensorflow as tf
 import numpy as np
@@ -23,44 +22,11 @@ from defs import LBLS
 from models.rnn_cell import RNNCell
 from models.gru_cell import GRUCell
 from models.lstm_cell import LSTMCell
+from config import Config
 
 logger = logging.getLogger("ner.rnn")
 logger.setLevel(logging.DEBUG)
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
-
-class Config:
-    """Holds model hyperparams and data information.
-
-    The config class is used to store various hyperparameters and dataset
-    information parameters. Model objects are passed a Config() object at
-    instantiation.
-    """
-    n_word_features = 2 # Number of features for every word in the input.
-    window_size = 1
-    n_features = (2 * window_size + 1) * n_word_features # Number of features for every word in the input.
-    max_length = 120 # longest sequence to parse
-    n_classes = 5
-    dropout = 0.5
-    embed_size = 50
-    hidden_size = 300
-    batch_size = 32
-    n_epochs = 10
-    max_grad_norm = 10.
-    lr = 0.001
-    use_crf = True
-
-    def __init__(self, args):
-        self.cell = args.cell
-
-        if "model_path" in args:
-            # Where to save things.
-            self.output_path = args.model_path
-        else:
-            self.output_path = "results/{}/{:%Y%m%d_%H%M%S}/".format(self.cell, datetime.now())
-        self.model_output = self.output_path + "model.weights"
-        self.eval_output = self.output_path + "results.txt"
-        self.conll_output = self.output_path + "{}_predictions.conll".format(self.cell)
-        self.log_output = self.output_path + "log"
 
 def pad_sequences(data, max_length):
     """Ensures each input-output seqeunce pair in @data is of length
@@ -116,6 +82,11 @@ def pad_sequences(data, max_length):
         ret.append((new_sentence, new_labels, mask))
         ### END YOUR CODE ###
     return ret
+
+
+def sequence_length(sequence_mask):
+    return tf.reduce_sum(tf.cast(sequence_mask, tf.int32), axis=1)
+
 
 class RNNModel(NERModel):
     """
@@ -254,58 +225,78 @@ class RNNModel(NERModel):
         Returns:
             pred: tf.Tensor of shape (batch_size, max_length, n_classes)
         """
+        def run_rnn(_cell, inputs, max_length, scope):
+            with tf.variable_scope(scope):
+                outputs = []
+                # Initialize state as vector of zeros.
+                batch_size = tf.shape(inputs)[0]
+                h_t = tf.zeros(shape=[batch_size, self.config.hidden_size])
+                if self.config.cell == 'lstm':
+                    h_t = (tf.zeros(shape=[batch_size, self.config.hidden_size]),
+                           tf.zeros(shape=[batch_size, self.config.hidden_size]))
+                for time_step in range(max_length):
+                    if time_step > 0:
+                        tf.get_variable_scope().reuse_variables()
+                    o_t, h_t = _cell(inputs[:, time_step, :], h_t)
+                    outputs.append(o_t)
+                return tf.stack(outputs, axis=1)
+
+        def _bidirectional_dynamic_rnn(_cell_fw, _cell_bw, inputs, seq_length):
+            with tf.variable_scope("fw"):
+                fw_outputs = run_rnn(_cell_fw, inputs, self.max_length, scope="fw")
+            reversed_inputs = tf.reverse_sequence(inputs, seq_length, seq_axis=1, batch_dim=0)
+            with tf.variable_scope("bw"):
+                tmp = run_rnn(_cell_bw, reversed_inputs, self.max_length, scope="bw")
+                bw_outputs = tf.reverse_sequence(tmp, seq_length, seq_axis=1, batch_dim=0)
+            return fw_outputs, bw_outputs
 
         x = self.add_embedding()
-        dropout_rate = self.dropout_placeholder
 
-        preds = [] # Predicted output at each timestep should go here!
-
-        # Use the cell defined below. For Q2, we will just be using the
-        # RNNCell you defined, but for Q3, we will run this code again
-        # with a GRU cell!
         if self.config.cell == "rnn":
-            cell = RNNCell(Config.n_features * Config.embed_size, Config.hidden_size)
+            cell = RNNCell
         elif self.config.cell == "gru":
-            cell = GRUCell(Config.n_features * Config.embed_size, Config.hidden_size)
+            cell = GRUCell
         elif self.config.cell == 'lstm':
-            cell = LSTMCell(Config.n_features * Config.embed_size, Config.hidden_size)
+            cell = LSTMCell
         else:
             raise ValueError("Unsuppported cell type: " + self.config.cell)
 
-        # Define U and b2 as variables.
-        # Initialize state as vector of zeros.
-        ### YOUR CODE HERE (~4-6 lines)
-        U = tf.get_variable('U_mat',
-                            shape=(Config.hidden_size, Config.n_classes),
-                            dtype=tf.float32,
-                            initializer=tf.contrib.layers.xavier_initializer())
-        b2 = tf.get_variable('b2',
-                             shape=(self.config.n_classes, ),
-                             dtype=tf.float32,
-                             initializer=tf.contrib.layers.xavier_initializer())
-        h_t = tf.zeros(shape=[tf.shape(self.input_placeholder)[0], Config.hidden_size])
-        if self.config.cell == 'lstm':
-            h_t = (tf.zeros(shape=[tf.shape(self.input_placeholder)[0], Config.hidden_size]),
-                   tf.zeros(shape=[tf.shape(self.input_placeholder)[0], Config.hidden_size]))
-        ### END YOUR CODE
+        if self.config.use_biRNN:
+            with tf.variable_scope("bi-%s" % self.config.cell):
+                cell_fw = cell(Config.n_features * Config.embed_size, Config.hidden_size)
+                cell_bw = cell(Config.n_features * Config.embed_size, Config.hidden_size)
+                output_fw, output_bw = _bidirectional_dynamic_rnn(cell_fw, cell_bw, x, sequence_length(self.mask_placeholder))
+                # shape output -> (batch_size, seq_length, 2 * hidden_size)
+                output = tf.concat([output_fw, output_bw], axis=-1)
+                output = tf.nn.dropout(output, self.dropout_placeholder)
+                # Define W and b as variables.
+                W = tf.get_variable('W',
+                                    shape=(2 * Config.hidden_size, Config.n_classes),
+                                    dtype=tf.float32,
+                                    initializer=tf.contrib.layers.xavier_initializer())
+                b = tf.get_variable('b',
+                                     shape=(self.config.n_classes, ),
+                                     dtype=tf.float32,
+                                     initializer=tf.zeros_initializer())
+        else:
+            with tf.variable_scope(self.config.cell):
+                cell = cell(Config.n_features * Config.embed_size, Config.hidden_size)
+                output = run_rnn(cell, x, self.max_length, scope=self.config.cell)
+                output = tf.nn.dropout(output, self.dropout_placeholder)
+                # Define W and b as variables.
+                W = tf.get_variable('W',
+                                    shape=(Config.hidden_size, Config.n_classes),
+                                    dtype=tf.float32,
+                                    initializer=tf.contrib.layers.xavier_initializer())
+                b = tf.get_variable('b',
+                                     shape=(self.config.n_classes, ),
+                                     dtype=tf.float32,
+                                     initializer=tf.zeros_initializer())
 
-        with tf.variable_scope("RNN"):
-            for time_step in range(self.max_length):
-                ### YOUR CODE HERE (~6-10 lines)
-                if time_step > 0:
-                    tf.get_variable_scope().reuse_variables()
-                o_t, h_t = cell(x[:, time_step, :], h_t)
-                o_drop_t = tf.nn.dropout(o_t, self.dropout_placeholder)
-                # y_t -> (batch_size, n_classes)
-                y_t = tf.matmul(o_drop_t, U) + b2
-                preds.append(y_t)
-                ### END YOUR CODE
-
-        # Make sure to reshape @preds here.
-        ### YOUR CODE HERE (~2-4 lines)
-        # (batch_size, max_length, n_classes)
-        preds = tf.stack(preds, axis=1)
-        ### END YOUR CODE
+        with tf.variable_scope("proj"):
+            batch_size = tf.shape(x)[0]
+            W_e = tf.tile(tf.expand_dims(W, axis=0), [batch_size, 1, 1])
+            preds = tf.matmul(output, W_e) + b
 
         assert preds.get_shape().as_list() == [None, self.max_length, self.config.n_classes], "predictions are not of the right shape. Expected {}, got {}".format([None, self.max_length, self.config.n_classes], preds.get_shape().as_list())
         return preds
@@ -327,14 +318,14 @@ class RNNModel(NERModel):
         """
         ### YOUR CODE HERE (~2-4 lines)
         if self.config.use_crf:
-            seq_length = tf.reduce_sum(tf.cast(self.mask_placeholder, tf.int32), axis=1)
+            seq_length = sequence_length(self.mask_placeholder)
             log_likelihood, trans_params = tf.contrib.crf.crf_log_likelihood(
                     preds, self.labels_placeholder, seq_length)
             self.trans_params = trans_params
             loss = tf.reduce_mean(-log_likelihood)
         else:
             loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=tf.boolean_mask(self.labels_placeholder, self.mask_placeholder),
-                                                                 logits=tf.boolean_mask(preds, self.mask_placeholder))
+                                                                  logits=tf.boolean_mask(preds, self.mask_placeholder))
             loss = tf.reduce_mean(loss)
 
         ### END YOUR CODE
