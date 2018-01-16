@@ -10,19 +10,21 @@ Some Neural network models for named entity recognition(NER) Implementation a ba
 
 ### Basic Usage:
 * Please check the cs224n [assignment 3](http://web.stanford.edu/class/cs224n/assignment3/index.html) for installing dependencies etc.
-* Set the hyper-parameters in `config.py`.
 * To run baseline model with existing dataset
 ```shell
 python window.py train
 ```
-* To run rnn models
+* To run rnn models, first set the hyper-parameters in `config.py`
+* CRF layer and biLSTM layer is controlled by `use_biRNN` and `use_crf`
+* Then, run the script `rnn.py`
 ```shell
 python rnn.py train --cell [rnn|gru|lstm]
 ```
 
 ### TODO
 - [x] implement lstm cell
+- [x] implement BiLSTM+CRF architecture
+- [ ] implement HMM baseline
 - [ ] add tensorboard
-- [ ] implement BiLSTM+CRF architecture
 
 ### Further Observations

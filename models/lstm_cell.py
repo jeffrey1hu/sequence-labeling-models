@@ -104,7 +104,7 @@ class LSTMCell(tf.nn.rnn_cell.RNNCell):
         new_state = (c_t, h_t)
         return output, new_state
 
-def test_gru_cell():
+def test_lstm_cell():
     with tf.Graph().as_default():
         with tf.variable_scope("test_lstm_cell"):
             x_placeholder = tf.placeholder(tf.float32, shape=(None,3))
@@ -156,7 +156,7 @@ def test_gru_cell():
 
 def do_test(_):
     logger.info("Testing lstm_cell")
-    test_gru_cell()
+    test_lstm_cell()
     logger.info("Passed!")
 
 if __name__ == "__main__":
