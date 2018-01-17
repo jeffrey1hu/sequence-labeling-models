@@ -13,16 +13,15 @@ import sys
 import time
 
 import tensorflow as tf
-import numpy as np
 
-from util import print_sentence, write_conll, read_conll
-from data_util import load_and_preprocess_data, load_embeddings, ModelHelper
-from ner_model import NERModel
-from defs import LBLS
-from models.rnn_cell import RNNCell
+from config import Config
 from models.gru_cell import GRUCell
 from models.lstm_cell import LSTMCell
-from config import Config
+from models.rnn_cell import RNNCell
+from ner_model import NERModel
+from utils.data_util import load_and_preprocess_data, load_embeddings, ModelHelper
+from utils.defs import LBLS
+from utils.util import print_sentence, write_conll, read_conll
 
 logger = logging.getLogger("ner.rnn")
 logger.setLevel(logging.DEBUG)
@@ -361,7 +360,7 @@ class RNNModel(NERModel):
             """
             ret = []
             for sentence, labels in data:
-                from util import window_iterator
+                from utils.util import window_iterator
                 sentence_ = []
                 for window in window_iterator(sentence, window_size, beg=start, end=end):
                     sentence_.append(sum(window, []))

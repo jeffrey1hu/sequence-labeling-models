@@ -8,17 +8,18 @@ from __future__ import absolute_import
 from __future__ import division
 
 import argparse
+import logging
 import sys
 import time
-import logging
 from datetime import datetime
 
 import tensorflow as tf
 
-from util import print_sentence, write_conll
-from data_util import load_and_preprocess_data, load_embeddings, read_conll, ModelHelper
 from ner_model import NERModel
-from defs import LBLS
+from utils.data_util import load_and_preprocess_data, load_embeddings, read_conll, ModelHelper
+from utils.defs import LBLS
+from utils.util import print_sentence, write_conll
+
 #from report import Report
 
 logger = logging.getLogger("ner.window_nn")
