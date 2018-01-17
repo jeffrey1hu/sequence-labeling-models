@@ -62,6 +62,7 @@ def evaluate(model, X, Y):
     cm.print_table()
     return cm.summary()
 
+
 class ModelHelper(object):
     """
     This helper takes care of preprocessing data, constructing embeddings, etc.
@@ -113,6 +114,40 @@ class ModelHelper(object):
         with open(os.path.join(path, "features.pkl")) as f:
             tok2id, max_length = pickle.load(f)
         return cls(tok2id, max_length)
+
+
+class HmmModelHelper(ModelHelper):
+    """
+    This helper takes care of preprocessing data, constructing embeddings, etc.
+    """
+    def __init__(self, tok2id, max_length):
+        self.tok2id = tok2id
+        self.max_length = max_length
+
+    def vectorize_example(self, sentence, labels=None):
+        sentence_ = [self.tok2id.get(word, self.tok2id[UNK]) for word in sentence]
+        if labels:
+            labels_ = [LBLS.index(l) for l in labels]
+            return sentence_, labels_
+        else:
+            return sentence_, [LBLS[-1] for _ in sentence]
+
+    def vectorize(self, data):
+        return [self.vectorize_example(sentence, labels) for sentence, labels in data]
+
+    @classmethod
+    def build(cls, data):
+        # Preprocess data to construct an embedding
+        # Reserve 0 for the special NIL token.
+        tok2id = build_dict((word for sentence, _ in data for word in sentence), offset=1, max_words=20000)
+        tok2id.update(build_dict([START_TOKEN, END_TOKEN, UNK], offset=len(tok2id)))
+        assert sorted(tok2id.items(), key=lambda t: t[1])[0][1] == 1
+        logger.info("Built dictionary for %d features.", len(tok2id))
+
+        max_length = max(len(sentence) for sentence, _ in data)
+
+        return cls(tok2id, max_length)
+
 
 def load_and_preprocess_data(args):
     logger.info("Loading training data...")
